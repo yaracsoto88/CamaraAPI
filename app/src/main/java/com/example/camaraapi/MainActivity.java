@@ -4,6 +4,7 @@ import android.Manifest;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
+import android.media.MediaScannerConnection;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
@@ -13,7 +14,8 @@ import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.Toast;
 
-import androidx.annotation.NonNull;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
@@ -28,7 +30,6 @@ import java.util.Locale;
 public class MainActivity extends AppCompatActivity {
     private static final int REQUEST_CAMERA_PERMISSION_CODE = 1;
     private static final int REQUEST_IMAGE_CAPTURE = 2;
-
     private Button btnAbrirCamara;
     private ImageView imgFoto;
 
@@ -47,6 +48,24 @@ public class MainActivity extends AppCompatActivity {
             }
         });
     }
+    private final ActivityResultLauncher<Intent> cameraLauncher = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            result -> {
+                if (result.getResultCode() == RESULT_OK) {
+                    // El código de resultado es igual a RESULT_OK, procesa la imagen capturada.
+                    Intent data = result.getData();
+                    if (data != null) {
+                        Bundle extras = data.getExtras();
+                        if (extras != null) {
+                            Bitmap imageBitmap = (Bitmap) extras.get("data");
+                            imgFoto.setImageBitmap(imageBitmap);
+                            saveImageToGallery(imageBitmap);
+                        }
+                    }
+                }
+            }
+    );
+
 
     private void captureImage() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
@@ -55,9 +74,9 @@ public class MainActivity extends AppCompatActivity {
         }
 
         Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
-        startActivityForResult(intent, REQUEST_IMAGE_CAPTURE);
-        
+        cameraLauncher.launch(intent);
     }
+
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
@@ -73,12 +92,18 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void saveImageToGallery(Bitmap imageBitmap) {
-        File storageDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES);
-
         String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
         String fileName = "IMG_" + timeStamp + ".jpg";
 
-        File imageFile = new File(storageDir, fileName);
+        // Guardar la imagen en la carpeta de la galería
+        String galleryPath = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM) + "/Camera";
+        File galleryFolder = new File(galleryPath);
+
+        if (!galleryFolder.exists()) {
+            galleryFolder.mkdirs();
+        }
+
+        File imageFile = new File(galleryFolder, fileName);
 
         try {
             FileOutputStream fos = new FileOutputStream(imageFile);
@@ -86,18 +111,12 @@ public class MainActivity extends AppCompatActivity {
             fos.flush();
             fos.close();
 
-            // Actualizar la galería
-            Intent mediaScanIntent = new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE);
-            Uri contentUri = Uri.fromFile(imageFile);
-            mediaScanIntent.setData(contentUri);
-            sendBroadcast(mediaScanIntent);
+            // Escanear el archivo para que aparezca en la galería
+            MediaScannerConnection.scanFile(this, new String[]{imageFile.getAbsolutePath()}, null, null);
 
-            Toast.makeText(this, "Imagen guardada", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Imagen guardada en la galería", Toast.LENGTH_SHORT).show();
         } catch (Exception e) {
             e.printStackTrace();
             Toast.makeText(this, "Error al guardar la imagen", Toast.LENGTH_SHORT).show();
         }
-    }
-
-
-}
+    }}
